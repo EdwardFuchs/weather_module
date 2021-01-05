@@ -1,14 +1,14 @@
-def weather(event):
-    import requests
-    import json
-    import datetime
-    if len(event.splited)<3:
-        event.message_send("Ошибка! В команде нужно указывать город.")
-        return False
-    elif len(event.splited)>3:
-        event.message_send("Ошибка! В команде нужно указывать только 1 город.")
-        return False
-    city = event.splited[2]
+from PIL import Image, ImageFont, ImageDraw
+import requests
+import datetime
+from io import BytesIO
+
+
+graphic = True #Надо ли графику
+
+
+#Функция для получения погоды
+def get_weather(city):
     weather = requests.get('http://api.openweathermap.org/data/2.5/weather', params={
         'lang':'ru',
         'units': 'metric',
@@ -16,29 +16,81 @@ def weather(event):
         'q': city
     }).json()
     if weather["cod"] == "404" or weather["cod"] == 404:
-        event.message_send(f"Город {city} не найден.")
-        return False
+        raise Exception(f"404: Город {city} не найден.")
     elif weather["cod"] != "200" and weather["cod"] != 200:
-        event.message_send(weather["message"])
-        return False
-    country = weather['sys']['country']
+        raise Exception(f"200: {weather['message']}")
+    icon = weather["weather"][0]["icon"]
     temp = weather["main"]["temp"]
+    temp_min = weather["main"]["temp_min"]
+    temp_max = weather["main"]["temp_max"]
+    utc = weather["timezone"]
+    country = weather['sys']['country']
     weather_desc = weather["weather"][0]["description"]
     wind_speed = weather["wind"]["speed"]
     clouds = weather["clouds"]["all"]
     humidity = weather["main"]["humidity"]
-    utc = int(weather["timezone"]/3600)
-    utc = f"+{utc}" if utc>=0 else utc
-    city = weather["name"]
     time_update = datetime.datetime.fromtimestamp(weather["dt"]).strftime('%H:%M')
-    current_weather = f"""Погода в {country}/{city}:
-&#8195;•Температура: {temp}°C
-&#8195;•Состояние: {weather_desc}
-&#8195;•Скорость ветра: {wind_speed} м/с
-&#8195;•Облачность: {clouds}%
-&#8195;•Влажность: {humidity}%
-&#8195;•Время обновления: {time_update} UTC{utc}"""
-    event.message_send(f"""{current_weather}""")
-    return True
+    return city, country, icon, temp, temp_min, temp_max, utc, weather_desc, wind_speed, clouds, humidity, time_update
+
+
+#исполение команды
+def weather(event):
+    if len(event.splited) < 3:
+        event.message_send("Ошибка! В команде нужно указывать город.")
+        return False
+    city = event.args
+    try:
+        city, country, icon, temp, temp_min, temp_max, utc, weather_desc, wind_speed, clouds, humidity, time_update = get_weather(city)
+    except Exception as error:
+        event.message_send(error)
+    if graphic:
+        #Графика
+        # Иконка
+        icon_url = f"http://openweathermap.org/img/wn/{icon}@4x.png"
+        icon = Image.open(requests.get(icon_url, stream=True).raw)
+        icon = icon.resize([300, 300], resample=Image.LANCZOS)
+        # Задаем шрифт
+        small = ImageFont.truetype('Files/Fonts/NotoSansCJKsc-Regular.otf', 48)
+        big = ImageFont.truetype('Files/Fonts/NotoSansCJKsc-Regular.otf', 128)
+        # Создаем изображение
+        img = Image.new("RGB", (1080, 400), "#000000")
+        draw = ImageDraw.Draw(img)
+        # Текст по центру
+        w, h = draw.textsize(f"{country}/{city}", font=small)
+        draw.text((((1080 - w) / 2), 20), f"{country}/{city}", font=small, fill=(255, 255, 255))
+        # Часы
+        offset = datetime.timedelta(seconds=utc)  # отступ по UTC
+        tz = datetime.timezone(offset, name=city)
+        dt = datetime.datetime.now(tz=tz)
+        time = dt.strftime("%H:%M")
+        draw.text((205, 70), time, font=big, fill=(255, 255, 255))
+        draw.text((530, 60), "|", font=big, fill=(255, 255, 255))
+        data = dt.strftime("%A, %d %B")
+        # на русский
+        data = data.replace("Monday", "Понедельник").replace("Tuesday", "Вторник").replace("Wednesday", "Среда").replace("Thursday", "Четверг").replace("Friday", "Пятница").replace("Saturday", "Суббота").replace("Sunday", "Воскресенье")
+        data = data.replace("January", "Января").replace("February", "Февраля").replace("March", "Марта").replace("April", "Апреля").replace("May", "Мая").replace("June", "Июня").replace("July", "Июля").replace("August", "Августа").replace("September", "Сентября").replace("October", "Октября").replace("November", "Ноября").replace("December", "Декабря")
+        # Текст по центру
+        w, h = draw.textsize(data, font=small)
+        draw.text((((1080 - w) / 2), 300), data, font=small, fill=(255, 255, 255))
+        # ставим значёк погоды
+        img.paste(icon, (520, 20), icon)
+        # температуры
+        draw.text((800, 100), f"{int(temp)}°", font=small, fill=(255, 255, 255))
+        draw.text((800, 160), f"{int(temp_min)}°/{int(temp_max)}°", font=small, fill=(255, 255, 255))
+        temp = BytesIO()
+        img.save(temp, format="png")
+        files = [{'type': "photo", 'data': temp.getvalue(), 'name': "weather.png"}]
+        event.bot.upload_files(files, event.peer_id)
+    else:
+        #без графики
+        current_weather = f"""Погода в {country}/{city}:
+        &#8195;•Температура: {temp}°C
+        &#8195;•Состояние: {weather_desc}
+        &#8195;•Скорость ветра: {wind_speed} м/с
+        &#8195;•Облачность: {clouds}%
+        &#8195;•Влажность: {humidity}%
+        &#8195;•Время обновления: {time_update} UTC{f'+{utc / 3600}' if utc >= 0 else utc / 3600}"""
+        event.message_send(f"{current_weather}")
+
     
 HandleCmd('погода', 0, weather)
