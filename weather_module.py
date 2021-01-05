@@ -1,5 +1,5 @@
 #Модуль погоды для ядра BAB
-#Версия: 2.0
+#Версия: 2.1
 #Авторы: https://vk.com/edwardfuchs
 #Git: https://github.com/EdwardFuchs/weather_module
 
@@ -9,10 +9,11 @@ graphic = True #Использовать ли графику
 
 
 #Код
-from PIL import Image, ImageFont, ImageDraw
-import requests
-import datetime
-from io import BytesIO
+from PIL import Image, ImageFont, ImageDraw #Для создания и редактирования изображений
+import requests #Для запросов на сайт
+import datetime #Для получения времени
+from io import BytesIO #Для сохранения файла в оперативную память
+import os.path #Для проверки существования файла
 
 
 #Функция для получения погоды
@@ -57,6 +58,16 @@ def weather(event):
         icon_url = f"http://openweathermap.org/img/wn/{icon}@4x.png"
         icon = Image.open(requests.get(icon_url, stream=True).raw)
         icon = icon.resize([300, 300], resample=Image.LANCZOS)
+        #Проверка наличия шрифта
+        if not os.path.isfile("Files/Fonts/NotoSansCJKsc-Regular.otf"):
+            event.message_send("Похоже вы в певый раз запустили графический плагин. Скачиваем нужный шрифт и помещаем его в нужное место...")
+            if not os.path.exists("Files"):
+                event.message_send("Создаем папку Files/Fonts/")
+                os.makedirs("Files/Fonts/")
+            fnt = requests.get("https://github.com/googlefonts/noto-cjk/raw/master/NotoSansCJKsc-Regular.otf")
+            with open("Files/Fonts/NotoSansCJKsc-Regular.otf", "wb") as f:
+                f.write(fnt.content)
+            event.message_send("Шрифт скачан и помещен в нужное место.")
         # Задаем шрифт
         small = ImageFont.truetype('Files/Fonts/NotoSansCJKsc-Regular.otf', 48)
         big = ImageFont.truetype('Files/Fonts/NotoSansCJKsc-Regular.otf', 128)
@@ -89,6 +100,8 @@ def weather(event):
         img.save(temp, format="png")
         files = [{'type': "photo", 'data': temp.getvalue(), 'name': "weather.png"}]
         event.bot.upload_files(files, event.peer_id)
+        temp.close()
+        img.close()
     else:
         #без графики
         current_weather = f"""Погода в {country}/{city}:
