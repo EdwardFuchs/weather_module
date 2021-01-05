@@ -1,10 +1,18 @@
+#Модуль погоды для ядра BAB
+#Версия: 2.0
+#Авторы: https://vk.com/edwardfuchs
+#Git: https://github.com/EdwardFuchs/weather_module
+
+
+#Настройка:
+graphic = True #Использовать ли графику
+
+
+#Код
 from PIL import Image, ImageFont, ImageDraw
 import requests
 import datetime
 from io import BytesIO
-
-
-graphic = True #Надо ли графику
 
 
 #Функция для получения погоды
